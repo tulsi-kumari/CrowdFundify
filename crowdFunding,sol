@@ -1,0 +1,96 @@
+// SPDX-License-Identifier: MIT;
+pragma solidity >=0.5.0;
+
+contract CrowdFunding
+{
+    mapping (address=>uint) public contributors;
+    address manager;
+    uint minimumContribution;
+    uint target;
+    uint deadline;
+    uint raisedAmount;
+    uint noOfContributors;
+
+    constructor(uint _target,uint _deadline)
+    {
+        target=_target;
+        deadline=block.timestamp+_deadline;
+        minimumContribution=10 wei;
+        manager=msg.sender;
+    }
+    
+    function sendEther() public payable 
+    {
+        require(block.timestamp<deadline );
+        require(msg.value>=minimumContribution);
+        if(contributors[msg.sender]==0)
+        {
+            noOfContributors++;
+        }
+        contributors[msg.sender]+=msg.value;
+        raisedAmount+=msg.value;
+    }
+
+    function getContractBalance() public view returns(uint)
+    {
+        return address(this).balance;
+    }
+
+    function refund() public payable 
+    {
+       require(block.timestamp>deadline && raisedAmount<target, "you are not eligible for refund");
+       require(noOfContributors>0, "No Contributor");
+       address payable user=payable(msg.sender);
+       user.transfer(contributors[msg.sender]);
+       contributors[msg.sender]=0;
+    }
+
+    struct Request
+    {
+        string description;
+        address payable recipient;
+        uint value;
+        bool completed;
+        uint noOfVoters;
+        mapping(address=>bool) voters;
+    }
+
+    mapping(uint=>Request) public requests;
+    uint public noOfRequests;
+
+    modifier onlyManager()
+    {
+        require(msg.sender==manager, "Only manager can call this function");
+        _;
+    }
+
+    function createRequest(string memory _description, address payable _recipient,uint _value) public onlyManager
+    {
+         Request storage newRequest=requests[noOfRequests];
+         noOfRequests++;
+         newRequest.description=_description;
+         newRequest.recipient=_recipient;
+         newRequest.value=_value;
+         newRequest.completed=false;
+         newRequest.noOfVoters=0;
+    }
+
+    function voteRequest(uint _requestNo) public 
+    {
+        require(contributors[msg.sender]>0, "You must be contributor");
+        Request storage thisRequest=requests[_requestNo];
+        require(thisRequest.voters[msg.sender]==false, "You already voted");
+        thisRequest.voters[msg.sender]=true;
+        thisRequest.noOfVoters++;
+    }
+
+    function makePayment(uint _requestNo) public onlyManager
+    {
+        require(raisedAmount>=target);
+        Request storage thisRequest=requests[_requestNo];
+        require(thisRequest.completed==false, "The request already completed");
+        require(thisRequest.noOfVoters>noOfContributors/2);
+        thisRequest.recipient.transfer(thisRequest.value);
+        thisRequest.completed=true;
+    } 
+}
